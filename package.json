@@ -1,20 +1,27 @@
 {
-  "name": "indexeddb",
-  "version": "1.0.0",
-  "description": "",
-  "homepage": "https://github.com/0xDazzer/indexeddb#readme",
-  "bugs": {
-    "url": "https://github.com/0xDazzer/indexeddb/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/0xDazzer/indexeddb.git"
-  },
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.js",
-  "scripts": {
-    "serve": "npx serve ./"
-  }
+    "name": "indexeddb",
+    "version": "1.0.0",
+    "description": "",
+    "homepage": "https://github.com/0xDazzer/indexeddb#readme",
+    "bugs": {
+        "url": "https://github.com/0xDazzer/indexeddb/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/0xDazzer/indexeddb.git"
+    },
+    "license": "ISC",
+    "author": "",
+    "type": "commonjs",
+    "main": "index.js",
+    "scripts": {
+        "serve": "npx serve ./"
+    },
+    "devDependencies": {
+        "fake-indexeddb": "^6.2.5",
+        "eslint": "^8.57.1",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.3",
+        "prettier": "^3.6.2"
+    }
 }
