@@ -1,3 +1,4 @@
+// import {indexedDB} from 'fake-indexeddb';
 const eventTypes = {
     error: 'error',
     abort: 'abort',
@@ -33,7 +34,7 @@ function once(eventTarget, eventName, options = {}) {
     });
 }
 
-async function adaptRequest(request) {
+export async function adaptRequest(request) {
     const controller = new AbortController();
     const {signal} = controller;
 
@@ -50,7 +51,7 @@ async function adaptRequest(request) {
     }
 }
 
-async function* adaptRequestIterator(request) {
+export async function* adaptRequestIterator(request) {
     while (true) {
         yield await adaptRequest(request);
     }
@@ -85,59 +86,55 @@ async function adaptOpenDBRequest(request, upgradeHandler) {
 }
 
 function adaptCursor(sourceCursor) {
-    const cursor = Object.create(sourceCursor);
-    cursor.update = (value) => adaptRequest(sourceCursor.update(value));
-    cursor.delete = () => adaptRequest(sourceCursor.delete());
-    return () => adaptRequestIterator(sourceCursor);
+    return applyAdapters(sourceCursor, {
+        delete: adaptRequest,
+        update: adaptRequest,
+    });
 }
 
 function adaptIndex(sourceIndex) {
-    const index = Object.create(sourceIndex);
-    index.get = (key) => adaptRequest(sourceIndex.get(key));
-    index.getKey = (key) => adaptRequest(sourceIndex.getKey(key));
-    index.count = (query) => adaptRequest(sourceIndex.count(query));
-    index.getAll = (query, count) => adaptRequest(sourceIndex.getAll(query, count));
-    index.getAllKeys = (query, count) => adaptRequest(sourceIndex.getAllKeys(query, count));
-    index.openCursor = (query, direction) => adaptCursor(sourceIndex.openCursor(query, direction))();
-    index.openKeyCursor = (query, direction) => adaptCursor(sourceIndex.openKeyCursor(query, direction))();
-    return index;
+    return applyAdapters(sourceIndex, {
+        get: adaptRequest,
+        getKey: adaptRequest,
+        count: adaptRequest,
+        getAll: adaptRequest,
+        getAllKeys: adaptRequest,
+        openCursor: adaptCursor,
+        openKeyCursor: adaptCursor,
+    });
 }
 
 function adaptObjectStore(sourceStore) {
-    const store = Object.create(sourceStore);
-    store.clear = () => adaptRequest(sourceStore.clear());
-    store.get = (key) => adaptRequest(sourceStore.get(key));
-    store.index = (name) => adaptIndex(sourceStore.index(name));
-    store.delete = (key) => adaptRequest(sourceStore.delete(key));
-    store.getKey = (key) => adaptRequest(sourceStore.getKey(key));
-    store.count = (query) => adaptRequest(sourceStore.count(query));
-    store.put = (value, key) => adaptRequest(sourceStore.put(value, key));
-    store.add = (value, key) => adaptRequest(sourceStore.add(value, key));
-    store.getAll = (query, count) => adaptRequest(sourceStore.getAll(query, count));
-    store.getAllKeys = (query, count) => adaptRequest(sourceStore.getAllKeys(query, count));
-    store.openCursor = (query, direction) => adaptCursor(sourceStore.openCursor(query, direction))();
-    store.openKeyCursor = (query, direction) => adaptCursor(sourceStore.openKeyCursor(query, direction))();
-    store.createIndex = (name, keyPath, options) => adaptIndex(sourceStore.createIndex(name, keyPath, options));
-    return store;
+    return applyAdapters(sourceStore, {
+        clear: adaptRequest,
+        get: adaptRequest,
+        index: adaptIndex,
+        delete: adaptRequest,
+        getKey: adaptRequest,
+        count: adaptRequest,
+        put: adaptRequest,
+        add: adaptRequest,
+        getAll: adaptRequest,
+        getAllKeys: adaptRequest,
+        openCursor: adaptCursor,
+        openKeyCursor: adaptCursor,
+        createIndex: adaptIndex,
+    });
 }
 
 function adaptTransaction(sourceTX) {
-    const tx = Object.create(sourceTX);
-    Object.defineProperty(tx, 'objectStoreNames', {
-        value: Array.from(sourceTX.objectStoreNames),
-        writable: true,
-        enumerable: true,
-        configurable: true,
+    return applyAdapters(sourceTX, {
+        objectStoreNames: Array.from,
+        objectStore: adaptObjectStore,
     });
-    tx.objectStore = (name) => adaptObjectStore(sourceTX.objectStore(name));
-    return tx;
 }
 
-async function adaptDB(sourceDB) {
-    const db = Object.create(sourceDB);
-    db.transaction = (storeNames, mode, options) => adaptTransaction(sourceDB.transaction(storeNames, mode, options));
-    db.createObjectStore = (name, options) => adaptObjectStore(sourceDB.createObjectStore(name, options));
-    return db;
+function adaptDB(sourceDB) {
+    return applyAdapters(sourceDB, {
+        transaction: adaptTransaction,
+        createObjectStore: adaptObjectStore,
+        objectStoreNames: Array.from,
+    });
 }
 
 async function openDB(name, upgradeHandler) {
@@ -145,5 +142,25 @@ async function openDB(name, upgradeHandler) {
     const sourceDB = await adaptOpenDBRequest(request, upgradeHandler);
     return adaptDB(sourceDB);
 }
+
+const applyAdapters = (source, schema = {}) => {
+    const proto = Object.getPrototypeOf(source);
+    const proxy = Object.create(proto);
+    const descriptors = Object.getOwnPropertyDescriptors(proto);
+
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+        const adapter = schema[key];
+        if (typeof descriptor.value === 'function') {
+            if (adapter) descriptor.value = (...args) => adapter(source[key](...args));
+            else descriptor.value = (...args) => source[key](...args);
+            Object.defineProperty(proxy, key, descriptor);
+        } else if (descriptor.get) {
+            if (adapter) descriptor.get = () => adapter(source[key]);
+            else descriptor.get = () => source[key];
+            Object.defineProperty(proxy, key, descriptor);
+        }
+    }
+    return proxy;
+};
 
 export {openDB};
