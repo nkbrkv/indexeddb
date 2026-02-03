@@ -1,4 +1,3 @@
-// import {indexedDB} from 'fake-indexeddb';
 const eventTypes = {
     error: 'error',
     abort: 'abort',
@@ -94,11 +93,47 @@ async function adaptOpenDBRequest(request, upgradeHandler) {
     }).finally(() => controller.abort());
 }
 
+// function adaptCursor(sourceCursor) {
+//     return applyAdapters(sourceCursor, {
+//         update: adaptRequest,
+//         delete: adaptRequest,
+//     });
+// }
+
 function adaptCursor(sourceCursor) {
-    return applyAdapters(sourceCursor, {
-        delete: adaptRequest,
-        update: adaptRequest,
-    });
+    const cursor = sourceCursor?.__source__ || sourceCursor;
+
+    return {
+        __source__: cursor,
+
+        get key() {
+            return cursor.key;
+        },
+
+        get primaryKey() {
+            return cursor.primaryKey;
+        },
+
+        get value() {
+            return cursor.value;
+        },
+
+        update(value) {
+            return adaptRequest(cursor.update.call(cursor, value));
+        },
+
+        delete() {
+            return adaptRequest(cursor.delete.call(cursor));
+        },
+
+        continue(key) {
+            cursor.continue.call(cursor, key);
+        },
+
+        advance(count) {
+            cursor.advance.call(cursor, count);
+        },
+    };
 }
 
 function adaptIndex(sourceIndex) {

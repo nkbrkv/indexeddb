@@ -1,4 +1,4 @@
-import {openDB} from './adapters.js';
+import {openDB, adaptRequestIterator} from './adapters.js';
 
 const upgradeHandler = async (db) => {
     const store = db.createObjectStore('users', {keyPath: 'id', autoIncrement: true});
@@ -22,51 +22,39 @@ const upgradeHandler = async (db) => {
     store.createIndex('age', 'age', {unique: false});
 };
 
-const db = await openDB('test', upgradeHandler);
-const tx = db.transaction(['users'], 'readwrite');
-const store = tx.objectStore('users');
-const iterable = store.openCursor();
+const database = 'test_db';
 
-for await (const cursor of iterable) {
-    console.log('cursor key', cursor.value);
-    cursor.continue();
-}
-// const index = store.index('age');
-// const query = IDBKeyRange.bound(30, 35, true, true);
-// const usersByAge = await index.getAll(query);
-// console.log('users by age', usersByAge);
+const example1 = async () => {
+    try {
+        const db = await openDB(database, upgradeHandler);
+        const transaction = db.transaction(['users'], 'readwrite');
+        console.log('objectStoreNames:', transaction.objectStoreNames);
+        const store = transaction.objectStore('users');
 
-// const example1 = async () => {
-//     try {
-//         const db = await openDB(database, upgradeHandler);
-//         const transaction = db.transaction(['users'], 'readwrite');
-//         const store = transaction.objectStore('users');
-//         const all = await store.getAll();
-//         console.log('All records in the store:', all);
-//     } catch (error) {
-//         console.error('Error opening database:', error);
-//     }
-// };
-//
-// const example2 = async () => {
-//     try {
-//         const db = await openDB(database, upgradeHandler);
-//         const tx = db.transaction(['users'], 'readwrite');
-//         const store = tx.objectStore('users');
-//         const asyncIterator = store.openCursor();
-//         for await (const cursor of asyncIterator) {
-//             if (!cursor) break;
-//             console.log('Cursor at:', cursor.value);
-//             const {value} = cursor;
-//             await cursor.update({...value, updated: true});
-//             cursor.continue();
-//         }
-//         const all = await store.getAll();
-//         console.log('All records after update:', all);
-//     } catch (error) {
-//         console.error('Error opening database:', error);
-//     }
-// };
+        console.log('\nRecord:', await store.get(3), '\n');
+    } catch (error) {
+        console.error('Error opening database:', error);
+    }
+};
+
+const example2 = async () => {
+    try {
+        const db = await openDB(database, upgradeHandler);
+        const tx = db.transaction(['users'], 'readwrite');
+        const store = tx.objectStore('users');
+        const asyncIterator = adaptRequestIterator(store.openCursor());
+        console.log('asyncIterator:', asyncIterator);
+        for await (const cursor of asyncIterator) {
+            console.log('Cursor at:', cursor.value);
+            const {value} = cursor;
+            await cursor.update({...value, updated: true});
+        }
+        const all = await store.getAll();
+        console.log('All records after update:', all);
+    } catch (error) {
+        console.error('Error opening database:', error);
+    }
+};
 
 // const example3 = async () => {
 //     try {
@@ -76,14 +64,12 @@ for await (const cursor of iterable) {
 //         const index = store.index('by_name');
 //         const asyncIterator = index.openCursor();
 //         for await (const cursor of asyncIterator) {
-//             if (!cursor) break;
+//             console.log('Cursor at:', cursor.value);
 //             const {value} = cursor;
-//             console.log('Cursor at:', value);
 //             if (value.name === 'Ivan') {
 //                 await cursor.delete();
 //                 console.log('Deleted record with name Ivan');
 //             }
-//             cursor.continue();
 //         }
 //         const all = await store.getAll();
 //         console.log('All records after deletion:', all);
@@ -92,13 +78,13 @@ for await (const cursor of iterable) {
 //     }
 // };
 
-// (async () => {
-//     console.log('Example 1: Get all records');
-//     await example1();
+(async () => {
+    console.log('Example 1: Get all records');
+    await example1();
 
-//     console.log('\n\nExample 2: Update records using cursor');
-//     await example2();
+    console.log('\n\nExample 2: Update records using cursor');
+    await example2();
 
-//     console.log('\n\nExample 3: Delete record using index cursor');
-//     await example3();
-// })();
+    // console.log('\n\nExample 3: Delete record using index cursor');
+    // await example3();
+})();
