@@ -35,25 +35,34 @@ function once(eventTarget, eventName, options = {}) {
 }
 
 export async function adaptRequest(request) {
+    const req = request?.__source__ || request;
     const controller = new AbortController();
     const {signal} = controller;
 
     try {
         const result = await Promise.race([
-            once(request, eventTypes.success, {signal}),
-            once(request, eventTypes.error, {signal}),
+            once(req, eventTypes.success, {signal}),
+            once(req, eventTypes.error, {signal}),
         ]);
 
-        if (result.type === eventTypes.success) return request.result;
-        else throw request.error;
+        if (result.type === eventTypes.success) return req.result;
+        else throw req.error;
     } finally {
         controller.abort();
     }
 }
 
 export async function* adaptRequestIterator(request) {
+    const nativeRequest = request?.__source__ || request;
+
     while (true) {
-        yield await adaptRequest(request);
+        const cursor = await adaptRequest(nativeRequest);
+        if (!cursor) break;
+
+        yield adaptCursor(cursor);
+
+        const nativeCursor = cursor?.__source__ || cursor;
+        nativeCursor.continue();
     }
 }
 
@@ -148,15 +157,21 @@ const applyAdapters = (source, schema = {}) => {
     const proxy = Object.create(proto);
     const descriptors = Object.getOwnPropertyDescriptors(proto);
 
+    Object.defineProperty(proxy, '__source__', {value: source, enumerable: false});
+
     for (const [key, descriptor] of Object.entries(descriptors)) {
         const adapter = schema[key];
         if (typeof descriptor.value === 'function') {
-            if (adapter) descriptor.value = (...args) => adapter(source[key](...args));
-            else descriptor.value = (...args) => source[key](...args);
+            descriptor.value = (...args) => {
+                const result = source[key].apply(source, args);
+                return adapter ? adapter(result) : result;
+            };
             Object.defineProperty(proxy, key, descriptor);
         } else if (descriptor.get) {
-            if (adapter) descriptor.get = () => adapter(source[key]);
-            else descriptor.get = () => source[key];
+            descriptor.get = () => {
+                const value = source[key];
+                return adapter ? adapter(value) : value;
+            };
             Object.defineProperty(proxy, key, descriptor);
         }
     }
